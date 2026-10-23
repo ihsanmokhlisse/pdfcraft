@@ -183,3 +183,39 @@ fn find_bar_still_types_latin_at_the_end() {
     h.run_steps(1);
     assert_eq!(query(&h), "pag");
 }
+
+/// The Search panel field is a second widget on the same query. Its undo must restore
+/// typing order too, and must not depend on the find bar having been used first.
+#[test]
+fn search_panel_undo_keeps_typing_order() {
+    let mut h = harness();
+    assert!(h.state_mut().execute("edit.advanced_search"));
+    h.run_steps(2);
+    assert!(h.ctx.memory(|m| m.has_focus(egui::Id::new("search-panel-input"))), "the search panel field has focus");
+    let phrase = "مؤشرات الأداء";
+    type_chars(&mut h, phrase);
+    h.run_steps(6);
+    type_chars(&mut h, "ء");
+    assert_eq!(query(&h), format!("{phrase}ء"));
+    h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Z);
+    h.run_steps(2);
+    assert_eq!(query(&h), phrase, "search panel undo stored the on-screen order, got {:?}", query(&h));
+    h.key_press_modifiers(egui::Modifiers::COMMAND | egui::Modifiers::SHIFT, egui::Key::Z);
+    h.run_steps(2);
+    assert_eq!(query(&h), format!("{phrase}ء"), "search panel redo dropped the last letter");
+}
+
+/// Backspace and Delete on an empty find field must not insert or panic.
+#[test]
+fn find_bar_backspace_and_delete_on_empty_keep_it_empty() {
+    let mut h = harness();
+    h.state_mut().views[0].open_find();
+    h.run_steps(2);
+    h.key_press(egui::Key::Backspace);
+    h.run_steps(1);
+    h.key_press(egui::Key::Delete);
+    h.run_steps(1);
+    assert_eq!(query(&h), "");
+    type_chars(&mut h, "مر");
+    assert_eq!(query(&h), "مر");
+}
