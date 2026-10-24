@@ -2,7 +2,8 @@
 
 Scan & OCR → Recognize text offers **English** (`en`), **Chinese (Simplified) and English**
 (`zh`), **Latin (accented)** (`la`), and the individual languages French, German, Spanish,
-Portuguese, Italian, Dutch, Danish, Norwegian, Swedish, Icelandic, Finnish, Czech and Polish.
+Portuguese, Italian, Dutch, Danish, Norwegian, Swedish, Icelandic, Finnish, Czech, Polish and
+Romanian.
 The Chinese recogniser reads Chinese, Latin letters and numbers in the same line. `la` and
 those named languages share the Latin recogniser. A named language prefers its own letters
 when two readings are close (`å` rather than `à` for Danish) and still keeps a letter from
@@ -10,6 +11,17 @@ another language when that reading is clearly ahead. The dictionary in
 [ATTRIBUTION.toml](../ATTRIBUTION.toml) lists the exact character set. Choose the document
 language in the dialog before recognising the current page, a range, all pages or multiple
 files. The interface language and OCR document language are independent.
+
+**Romanian** (`ro`) reads with the Latin recogniser when it is installed, else with the English
+one, and then puts back the letters neither writes: the Latin dictionary has `â`, `î` and the
+cedilla `ş` but no `ă`, `ț` or comma-below `ș`, and the English model writes `ă` and `â` as `?`
+and `ș ț î` as `s t i`. Each recognised word is matched against a list of Romanian word forms
+with their frequencies (`ro-words.txt`): `P?n? m?ine` becomes `Până mâine`, `Stiinta` becomes
+`Știința`. A letter is changed only when the likely forms agree on it, so an ambiguous word
+keeps its reading (`fata` could be `față`, `fața` or `fată`; `scoala` becomes `școala`, whose
+last letter could also be `ă`). A `?` inside a word is always a letter; at its end it stays a
+question mark unless a word ends there. The cedilla letters become the comma-below ones.
+Without the list, only those two fixes are made.
 
 The output is a searchable image: original page images and content stay intact, with an
 invisible text layer for selection, copying, search and text export. Recognition is one
@@ -27,7 +39,8 @@ This downloads the models and licence notices into `assets/models/`, verifies th
 SHA-256 hashes, and leaves them outside Git. English needs `text-detection.rten` and
 `text-recognition.rten`; Chinese needs `text-detection.rten`, `chinese-recognition.onnx`
 and `chinese-keys.txt`; Latin needs `text-detection.rten`, `latin-recognition.onnx`
-and `latin-keys.txt`. Sources, versions, hashes and licences are in
+and `latin-keys.txt`; Romanian needs the English or Latin files, and `ro-words.txt` for its
+diacritics. Sources, versions, hashes and licences are in
 [ATTRIBUTION.toml](../ATTRIBUTION.toml).
 
 For an installed desktop app, put those files in a directory and launch with
