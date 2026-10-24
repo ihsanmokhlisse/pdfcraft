@@ -5221,6 +5221,34 @@ fn german_document_language_keeps_umlauts_and_eszett() {
     assert!(!text.contains('?'), "{text}");
 }
 
+/// Romanian: whichever model reads it (the Latin one, or the default one, which writes `ă` and
+/// `â` as `?` and drops the comma of `ș`), the text layer gets the Romanian letters back from the
+/// word list, and they survive save and reopen.
+#[test]
+fn romanian_scan_ocr_restores_diacritics() {
+    let Some(models) = ocr::Models::find_for("ro") else {
+        eprintln!("skipped: OCR models not installed");
+        return;
+    };
+    if !models.recognition.with_file_name(pdfcraft_ocr::romanian::WORDS).is_file() {
+        eprintln!("skipped: {} not installed", pdfcraft_ocr::romanian::WORDS);
+        return;
+    }
+    let png = inter_scan(&["Până mâine, profesorul despre România.", "Știința și tehnica au făcut pași mari."], None);
+    let mut s = Session::new();
+    let scan = s.create_from_images(&[("romana.png".into(), png)]).unwrap();
+    let id = s.open("scan.pdf", None, scan, None).unwrap();
+    let text = s.recognize_text(id, &[], ocr::OcrSettings { language: "ro".into(), ..Default::default() }).unwrap()[0].text();
+    for word in ["Până", "mâine", "România", "Știința", "și", "făcut", "pași"] {
+        assert!(text.contains(word), "missing {word:?} in {text:?}");
+    }
+    assert!(!text.contains('?'), "{text}");
+    let saved = s.save_bytes(id).unwrap();
+    let reopened = s.open("result.pdf", None, saved, None).unwrap();
+    let reopened_text = page_texts(&s, reopened);
+    assert!(reopened_text[0].contains("România") && reopened_text[0].contains("Știința"), "{reopened_text:?}");
+}
+
 /// #524: `ç` and `ù` must come back as themselves. A reading of `facade` or `ou` has no `?` and
 /// would pass a test that only rejects question marks.
 #[test]

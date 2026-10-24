@@ -3433,6 +3433,19 @@ kind = "model"
 usage = "Scan & OCR: character classes for the Latin recogniser (cargo xtask models)"
 sha256 = "3c0a8a79b612653c25f765271714f71281e4e955962c153e272b7b8c1d2b13ff"
 
+[[fetched]]
+file = "ro-words.txt"
+url = "https://raw.githubusercontent.com/hermitdave/FrequencyWords/525f9b560de45753a5ea01069454e72e9aa541c6/content/2018/ro/ro_50k.txt"
+title = "Romanian word frequency list (50,000 forms)"
+author = "Hermit Dave (FrequencyWords), counted from the OpenSubtitles2018 corpus (OPUS)"
+source = "https://github.com/hermitdave/FrequencyWords/blob/525f9b560de45753a5ea01069454e72e9aa541c6/content/2018/ro/ro_50k.txt (content CC-BY-SA-4.0, code MIT)"
+licence = "CC-BY-SA-4.0"
+licence_url = "https://creativecommons.org/licenses/by-sa/4.0/legalcode.txt"
+licence_sha256 = "28a9529c7d0bb4dc51f4bf5c116a3d16ef247a052f7591466768ddf563fd1cf5"
+kind = "model"
+usage = "Scan & OCR: restores Romanian diacritics after recognition (cargo xtask models)"
+sha256 = "af4d7d1fc980ee7f988a5114dd34478dd5c7abd1e66a45c25a5da330f06faba5"
+
 [[build_input]]
 name = "craft-fonts"
 option = "CRAFT_FONTS_DIR"

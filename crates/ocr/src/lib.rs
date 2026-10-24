@@ -8,7 +8,9 @@
 //! outside WinAnsi (Chinese, and Latin letters no standard font encodes).
 //!
 //! English uses ocrs; Chinese (`zh`) and accented Latin (`la`) use PP-OCR models on the same
-//! local runtime, each with its own recognition model and character dictionary.
+//! local runtime, each with its own recognition model and character dictionary. Romanian (`ro`)
+//! uses the Latin model when it is installed (else ocrs) and then restores the letters neither
+//! writes ([`romanian`]).
 
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
@@ -16,6 +18,7 @@ use rten_imageproc::BoundingRect;
 use std::path::{Path, PathBuf};
 
 mod ppocr;
+pub mod romanian;
 
 pub use pdfcraft_fonts::helvetica_width;
 
@@ -46,6 +49,7 @@ const PP_OCR: &[(&str, &str, &str, usize)] = &[
     ("fi", LATIN_MODEL, LATIN_DICTIONARY, 504),
     ("cs", LATIN_MODEL, LATIN_DICTIONARY, 504),
     ("pl", LATIN_MODEL, LATIN_DICTIONARY, 504),
+    ("ro", LATIN_MODEL, LATIN_DICTIONARY, 504),
 ];
 
 /// The recognition model's alphabet, as it was trained (ocrs-models' `DEFAULT_ALPHABET`): its
@@ -56,6 +60,7 @@ pub const ALPHABET: &str = " 0123456789!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~€ABCD
 /// The languages the models read (ISO 639-1). `la` uses the Latin dictionary; a listed letter can still be misread.
 /// The named languages use that same model and, when two letters score close together, prefer
 /// the ones that language writes (`å` for Danish, `à` for French) without forbidding the others.
+/// Romanian also has its diacritics restored after recognition ([`romanian`]).
 pub const LANGUAGES: &[(&str, &str)] = &[
     ("en", "English"),
     ("zh", "Chinese (Simplified) and English"),
@@ -73,6 +78,7 @@ pub const LANGUAGES: &[(&str, &str)] = &[
     ("fi", "Finnish"),
     ("cs", "Czech"),
     ("pl", "Polish"),
+    ("ro", "Romanian"),
 ];
 
 /// Letters a document language prefers when the recogniser is unsure. Empty means no preference.
@@ -95,6 +101,8 @@ pub fn preferred_letters(language: &str) -> &'static str {
         "is" => "áðéíóúýþæöÁÐÉÍÓÚÝÞÆÖ",
         "cs" => "áčďéěíňóřšťúůýžÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ",
         "pl" => "ąćęłńóśźżĄĆĘŁŃÓŚŹŻ",
+        // The Latin dictionary has no ă, ț or comma-below ș: [`romanian`] restores those.
+        "ro" => "âîşÂÎŞ",
         _ => "",
     }
 }
@@ -144,7 +152,9 @@ impl Models {
         }
         let &(_, model, dictionary, _) = PP_OCR.iter().find(|(code, ..)| *code == language)?;
         if !dir.join(dictionary).is_file() || !dir.join(model).is_file() {
-            return None;
+            // Romanian reads with the English models too: [`romanian`] fills in the letters they
+            // can't write.
+            return if language == "ro" { english.map(|m| Models { language, ..m }) } else { None };
         }
         let detection = english.as_ref().map(|m| m.detection.clone()).or_else(|| {
             [DETECTION_MODEL, "text-detection.rten"].into_iter().map(|name| dir.join(name)).find(|path| path.is_file())
@@ -241,6 +251,9 @@ pub struct Ocr {
     /// Letters this document language prefers when two readings are close. Empty for English,
     /// Chinese and the unrestricted Latin choice.
     preferred: &'static str,
+    /// Romanian: the word list that restores the diacritics neither model writes (empty when
+    /// `ro-words.txt` isn't installed: then only `?` and the cedilla letters are fixed).
+    romanian: Option<romanian::Lexicon>,
 }
 
 impl Ocr {
@@ -259,7 +272,8 @@ impl Ocr {
             ..Default::default()
         };
         let engine = ocrs::OcrEngine::new(params).map_err(|e| OcrError::Load("ocr engine".into(), e.to_string()))?;
-        Ok(Ocr { engine, ppocr, preferred: preferred_letters(models.language) })
+        let romanian = (models.language == "ro").then(|| models.recognition.parent().and_then(romanian::Lexicon::load).unwrap_or_default());
+        Ok(Ocr { engine, ppocr, preferred: preferred_letters(models.language), romanian })
     }
 
     /// Load the models found by [`Models::find`].
@@ -276,6 +290,17 @@ impl Ocr {
 
     /// Recognise the text in an RGBA (or RGB, or grey) image, `width` × `height` pixels.
     pub fn recognize(&self, pixels: &[u8], width: u32, height: u32) -> Result<Vec<Line>, OcrError> {
+        let mut lines = self.read(pixels, width, height)?;
+        if let Some(lexicon) = &self.romanian {
+            for word in lines.iter_mut().flat_map(|l| l.words.iter_mut()) {
+                word.text = lexicon.restore_text(&word.text);
+            }
+        }
+        Ok(lines)
+    }
+
+    /// [`Ocr::recognize`] before a language's own letters are restored.
+    fn read(&self, pixels: &[u8], width: u32, height: u32) -> Result<Vec<Line>, OcrError> {
         let count = (width as usize)
             .checked_mul(height as usize)
             .filter(|n| *n <= 64 * 1024 * 1024)
@@ -666,6 +691,27 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 
+    /// Romanian reads with the Latin model when it is there, and with the default model when it
+    /// isn't (the diacritics are restored either way); the other named languages need the Latin
+    /// model.
+    #[test]
+    fn romanian_falls_back_to_the_default_model() {
+        let dir = std::env::temp_dir().join(format!("pdfcraft-ocr-ro-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        for file in [DETECTION_MODEL, RECOGNITION_MODEL] {
+            std::fs::write(dir.join(file), b"x").unwrap();
+        }
+        assert!(Models::in_dir_for(&dir, "ro").unwrap().recognition.ends_with(RECOGNITION_MODEL));
+        assert!(Models::in_dir_for(&dir, "de").is_none());
+        // A Latin model without its dictionary isn't used.
+        std::fs::write(dir.join(LATIN_MODEL), b"x").unwrap();
+        assert!(Models::in_dir_for(&dir, "ro").unwrap().recognition.ends_with(RECOGNITION_MODEL));
+        std::fs::write(dir.join(LATIN_DICTIONARY), b"x").unwrap();
+        assert!(Models::in_dir_for(&dir, "ro").unwrap().recognition.ends_with(LATIN_MODEL));
+        assert_eq!(preferred_letters("ro"), "âîşÂÎŞ");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
     /// A language can only prefer a letter the Latin dictionary actually contains.
     #[test]
     fn preferred_letters_are_in_the_latin_dictionary() {
@@ -728,6 +774,10 @@ mod tests {
             ("cs", "áčďéěíňóřšťúůýžÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ"),
             // ą ć ę ł ń ó ś ź ż: the nine letters Polish spelling adds to the plain Latin alphabet.
             ("pl", "ąćęłńóśźżĄĆĘŁŃÓŚŹŻ"),
+            // â î: Romanian's circumflex vowels; ş: the cedilla form the Latin dictionary has for
+            // ș. Its ă, ț and comma-below ș aren't in the dictionary at all, so the model can't
+            // prefer them: `romanian` restores them after recognition.
+            ("ro", "âîşÂÎŞ"),
             ("en", ""),
             ("zh", ""),
             ("la", ""),
