@@ -63,9 +63,10 @@ fn validate(root: &Path) -> Result<()> {
 }
 
 /// Filename constants in `crates/ocr/src/lib.rs` that the app fetches. English detection and
-/// recognition, plus the Chinese and Latin recognition models and their dictionaries.
+/// recognition, the Chinese and Latin recognition models and their dictionaries, and the Romanian
+/// word list.
 const REQUIRED_OCR_CONSTANTS: &[&str] =
-    &["DETECTION_MODEL", "RECOGNITION_MODEL", "CHINESE_MODEL", "CHINESE_DICTIONARY", "LATIN_MODEL", "LATIN_DICTIONARY"];
+    &["DETECTION_MODEL", "RECOGNITION_MODEL", "CHINESE_MODEL", "CHINESE_DICTIONARY", "LATIN_MODEL", "LATIN_DICTIONARY", "ROMANIAN_WORDS"];
 
 /// Read those filename constants. Fail closed if their declaration format changes; do not guess
 /// filenames or add a dependency on the OCR engine.
